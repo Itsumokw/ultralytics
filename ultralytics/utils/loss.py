@@ -160,36 +160,36 @@ class BboxLoss(nn.Module):
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
         self.Lovasz = Lovasz
 
-def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
-    """Compute the loss."""
-    weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
+    def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
+        """Compute the loss."""
+        weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
 
-    if self.Lovasz:
-        # 计算 IoU（不使用 CIoU）
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=False)
-        iou = iou.clamp(min=0, max=1)
+        if self.Lovasz:
+            # 计算 IoU（不使用 CIoU）
+            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=False)
+            iou = iou.clamp(min=0, max=1)
 
-        # 准备 Lovasz 损失所需的概率和标签
-        probas = torch.stack([1 - iou, iou], dim=1)  # [N, 2]
-        labels = torch.ones_like(iou).long()  # 正样本标签
+            # 准备 Lovasz 损失所需的概率和标签
+            probas = torch.stack([1 - iou, iou], dim=1)  # [N, 2]
+            labels = torch.ones_like(iou).long()  # 正样本标签
 
-        # 计算 Lovasz 损失
-        loss_iou = lovasz_softmax_flat(probas, labels, classes='present') * weight.squeeze(-1)
-        loss_iou = loss_iou.sum() / target_scores_sum
-    else:
-        # 原有的 CIoU 损失计算方式
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+            # 计算 Lovasz 损失
+            loss_iou = lovasz_softmax_flat(probas, labels, classes='present') * weight.squeeze(-1)
+            loss_iou = loss_iou.sum() / target_scores_sum
+        else:
+            # 原有的 CIoU 损失计算方式
+            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+            loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-    # DFL 损失计算（保持不变）
-    if self.dfl_loss:
-        target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
-        loss_dfl = self.dfl_loss(pred_dist[fg_mask].view(-1, self.dfl_loss.reg_max), target_ltrb[fg_mask]) * weight
-        loss_dfl = loss_dfl.sum() / target_scores_sum
-    else:
-        loss_dfl = torch.tensor(0.0).to(pred_dist.device)
+        # DFL 损失计算（保持不变）
+        if self.dfl_loss:
+            target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
+            loss_dfl = self.dfl_loss(pred_dist[fg_mask].view(-1, self.dfl_loss.reg_max), target_ltrb[fg_mask]) * weight
+            loss_dfl = loss_dfl.sum() / target_scores_sum
+        else:
+            loss_dfl = torch.tensor(0.0).to(pred_dist.device)
 
-    return loss_iou, loss_dfl
+        return loss_iou, loss_dfl
 
 
 class RotatedBboxLoss(BboxLoss):
