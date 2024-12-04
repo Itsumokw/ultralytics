@@ -88,29 +88,108 @@ class DFLoss(nn.Module):
         ).mean(-1, keepdim=True)
 
 
+def lovasz_grad(gt_sorted):
+    """
+    Computes gradient of the Lovasz extension w.r.t sorted errors
+    See Algorithm 1 in paper
+    """
+    p = len(gt_sorted)
+    gts = gt_sorted.sum()
+    intersection = gts - gt_sorted.float().cumsum(0)
+    union = gts + (1 - gt_sorted).float().cumsum(0)
+    jaccard = 1. - intersection / union
+    if p > 1:
+        jaccard[1:p] = jaccard[1:p] - jaccard[0:-1]
+    return jaccard
+
+def lovasz_softmax_flat(probas, labels, classes='present'):
+    """
+    Multi-class Lovasz-Softmax loss
+      probas: [P, C] Variable, class probabilities at each prediction (between 0 and 1)
+      labels: [P] Tensor, ground truth labels (between 0 and C - 1)
+      classes: 'all' for all, 'present' for classes present in labels, or a list of classes to average.
+    """
+    if probas.numel() == 0:
+        # only void pixels, the gradients should be 0
+        return probas * 0.
+    C = probas.size(1)
+    losses = []
+    class_to_sum = list(range(C)) if classes in ['all', 'present'] else classes
+    for c in class_to_sum:
+        fg = (labels == c).float()  # foreground for class c
+        if (classes == 'present' and fg.sum() == 0):
+            continue
+        class_pred = probas[:, c]
+        errors = (fg - class_pred).abs()
+        errors_sorted, perm = torch.sort(errors, 0, descending=True)
+        perm = perm.detach()
+        fg_sorted = fg[perm]
+        grad = lovasz_grad(fg_sorted)
+        losses.append(torch.dot(errors_sorted, grad))
+    return mean(losses)
+
+def mean(l, ignore_nan=False, empty=0):
+    """
+    nanmean compatible with generators.
+    """
+    l = iter(l)
+    if ignore_nan:
+        l = filterfalse(isnan, l)
+    try:
+        n = 1
+        acc = next(l)
+    except StopIteration:
+        if empty == 'raise':
+            raise ValueError('Empty mean')
+        return empty
+    for n, v in enumerate(l, 2):
+        acc += v
+    if n == 1:
+        return acc
+    return acc / n
+
+def isnan(x):
+    return x != x
+
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses during training."""
 
-    def __init__(self, reg_max=16):
+    def __init__(self, reg_max=16, Lovasz=True):
         """Initialize the BboxLoss module with regularization maximum and DFL settings."""
         super().__init__()
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
+        self.Lovasz = Lovasz
 
-    def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
-        """IoU loss."""
-        weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
+def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
+    """Compute the loss."""
+    weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
+
+    if self.Lovasz:
+        # 计算 IoU（不使用 CIoU）
+        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=False)
+        iou = iou.clamp(min=0, max=1)
+
+        # 准备 Lovasz 损失所需的概率和标签
+        probas = torch.stack([1 - iou, iou], dim=1)  # [N, 2]
+        labels = torch.ones_like(iou).long()  # 正样本标签
+
+        # 计算 Lovasz 损失
+        loss_iou = lovasz_softmax_flat(probas, labels, classes='present') * weight.squeeze(-1)
+        loss_iou = loss_iou.sum() / target_scores_sum
+    else:
+        # 原有的 CIoU 损失计算方式
         iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-        # DFL loss
-        if self.dfl_loss:
-            target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
-            loss_dfl = self.dfl_loss(pred_dist[fg_mask].view(-1, self.dfl_loss.reg_max), target_ltrb[fg_mask]) * weight
-            loss_dfl = loss_dfl.sum() / target_scores_sum
-        else:
-            loss_dfl = torch.tensor(0.0).to(pred_dist.device)
+    # DFL 损失计算（保持不变）
+    if self.dfl_loss:
+        target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
+        loss_dfl = self.dfl_loss(pred_dist[fg_mask].view(-1, self.dfl_loss.reg_max), target_ltrb[fg_mask]) * weight
+        loss_dfl = loss_dfl.sum() / target_scores_sum
+    else:
+        loss_dfl = torch.tensor(0.0).to(pred_dist.device)
 
-        return loss_iou, loss_dfl
+    return loss_iou, loss_dfl
 
 
 class RotatedBboxLoss(BboxLoss):
@@ -123,8 +202,8 @@ class RotatedBboxLoss(BboxLoss):
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
         """IoU loss."""
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
-        iou = probiou(pred_bboxes[fg_mask], target_bboxes[fg_mask])
-        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        # iou = probiou(pred_bboxes[fg_mask], target_bboxes[fg_mask])
+        # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
         if self.dfl_loss:
