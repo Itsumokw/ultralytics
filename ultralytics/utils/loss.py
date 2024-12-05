@@ -38,26 +38,37 @@ class VarifocalLoss(nn.Module):
 
 
 class FocalLoss(nn.Module):
-    """Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)."""
+    """Focal Loss for addressing class imbalance."""
 
-    def __init__(self):
-        """Initializer for FocalLoss class with no parameters."""
+    def __init__(self, gamma=2.0, alpha=0.75):
+        """
+        初始化 FocalLoss 类。
+
+        Args:
+            gamma (float): 调整难易样本的参数。
+            alpha (float): 平衡正负样本的权重。
+        """
         super().__init__()
+        self.gamma = gamma
+        self.alpha = alpha
 
-    @staticmethod
-    def forward(pred, label, gamma=1.5, alpha=0.25):
-        """Calculates and updates confusion matrix for object detection/classification tasks."""
+    def forward(self, pred, label):
+        """计算 Focal Loss。
+
+        Args:
+            pred (torch.Tensor): 模型的预测输出（logits）。
+            label (torch.Tensor): 真实标签。
+
+        Returns:
+            torch.Tensor: 计算后的 Focal Loss。
+        """
         loss = F.binary_cross_entropy_with_logits(pred, label, reduction="none")
-        # p_t = torch.exp(-loss)
-        # loss *= self.alpha * (1.000001 - p_t) ** self.gamma  # non-zero power for gradient stability
-
-        # TF implementation https://github.com/tensorflow/addons/blob/v0.7.1/tensorflow_addons/losses/focal_loss.py
-        pred_prob = pred.sigmoid()  # prob from logits
+        pred_prob = pred.sigmoid()  # 将 logits 转换为概率
         p_t = label * pred_prob + (1 - label) * (1 - pred_prob)
-        modulating_factor = (1.0 - p_t) ** gamma
+        modulating_factor = (1.0 - p_t) ** self.gamma
         loss *= modulating_factor
-        if alpha > 0:
-            alpha_factor = label * alpha + (1 - label) * (1 - alpha)
+        if self.alpha > 0:
+            alpha_factor = label * self.alpha + (1 - label) * (1 - self.alpha)
             loss *= alpha_factor
         return loss.mean(1).sum()
 
@@ -166,7 +177,7 @@ class v8DetectionLoss:
 
         # 初始化分类损失函数，根据参数选择使用 FocalLoss 或 BCEWithLogitsLoss
         if use_focal_loss:
-            self.cls_loss_fn = FocalLoss(self)  # 使用 FocalLoss
+            self.cls_loss_fn = FocalLoss(gamma=2.0, alpha=0.75)  # 使用 FocalLoss
         else:
             self.cls_loss_fn = nn.BCEWithLogitsLoss(reduction="none")  # 默认使用 BCE
 
