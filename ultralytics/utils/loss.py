@@ -166,7 +166,7 @@ class v8DetectionLoss:
 
         # 初始化分类损失函数，根据参数选择使用 FocalLoss 或 BCEWithLogitsLoss
         if use_focal_loss:
-            self.cls_loss_fn = FocalLoss(gamma=2.0, alpha=0.75)  # 使用 FocalLoss
+            self.cls_loss_fn = FocalLoss(self)  # 使用 FocalLoss
         else:
             self.cls_loss_fn = nn.BCEWithLogitsLoss(reduction="none")  # 默认使用 BCE
 
