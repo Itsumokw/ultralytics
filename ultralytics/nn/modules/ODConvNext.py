@@ -20,27 +20,26 @@ def autopad(k, p=None):                        # kernel  padding 根据卷积核
     return p
 
 class ConvNextBlock(nn.Module):
-    
-    def __init__(self, inputdim, dim, drop_path=0., layer_scale_init_value=1e-6, kersize = 7):   #demo: [64, 64, 1]  1 denotes the number of repeats
+    def __init__(self, c1, c2, drop_path=0., layer_scale_init_value=1e-6, kersize=7):
         super().__init__()
-        #匹配yolov5配置文件加入outdim输出通道
-        # self.flag = True if dim == outdim else False
-        
-        self.dwconv = nn.Conv2d(dim, dim, kernel_size=kersize, padding=kersize // 2, groups=dim)  # depthwise conv
-        self.norm = LayerNorm_s(dim, eps=1e-6)
-        self.pwconv1 = nn.Linear(dim, 4 * dim)  
+        self.dim = c2  # 输出通道数
+        self.dwconv = nn.Conv2d(c2, c2, kernel_size=kersize, padding=kersize // 2, groups=c2)
+        self.norm = LayerNorm_s(c2, eps=1e-6)
+        self.pwconv1 = nn.Linear(c2, 4 * c2)
         self.act = nn.GELU()
-        self.pwconv2 = nn.Linear(4 * dim, dim)
-        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)),
+        self.pwconv2 = nn.Linear(4 * c2, c2)
+        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((c2)),
                                   requires_grad=True) if layer_scale_init_value > 0 else None
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, x):
-        # if self.flag == False:
-        #     raise ValueError(
-        #         f"Expected input out to have {dim} channels, but got {outdim} channels instead")
+        if c1 != c2:
+            self.shortcut = nn.Conv2d(c1, c2, kernel_size=1)
+        else:
+            self.shortcut = nn.Identity()
 
-        input = x
+    def forward(self, x):
+        shortcut = self.shortcut(x)  # 处理输入通道数不匹配的情况
+
         x = self.dwconv(x)
         x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
         x = self.norm(x)
@@ -51,7 +50,7 @@ class ConvNextBlock(nn.Module):
             x = self.gamma * x
         x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
 
-        x = input + self.drop_path(x)
+        x = shortcut + self.drop_path(x)
         return x
 
 class LayerNorm_s(nn.Module):
@@ -246,10 +245,10 @@ class ODConv2d_3rd(nn.Conv2d):
         return output
 
 class ODConv_3rd(nn.Module):
-    # Standard convolution
-    def __init__(self, c1, c2, k=1, s=1, kerNums=1, g=1, p=None, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+    # ODConv convolution
+    def __init__(self, c1, c2, k=1, s=1, kerNums=4, g=1, p=None, act=True, r=1 / 16):
         super().__init__()
-        self.conv = ODConv2d_3rd(c1, c2, k, s, autopad(k, p), groups=g, K=kerNums)
+        self.conv = ODConv2d_3rd(c1, c2, k, s, autopad(k, p), groups=g, K=kerNums, r=r)
         self.bn = nn.BatchNorm2d(c2)
         self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
