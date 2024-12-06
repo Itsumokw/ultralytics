@@ -1404,9 +1404,9 @@ class SwinUNetBlock(nn.Module):
         # 编码器
         self.encoder = SwinTransformerBlock(c1, c2, num_heads, num_layers, window_size)
 
-        # 解码器
+        # 解码器（不改变空间尺寸）
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(c2, c1, kernel_size=2, stride=2),
+            nn.Conv2d(c2, c1, kernel_size=1, stride=1),
             nn.BatchNorm2d(c1),
             nn.ReLU(inplace=True)
         )
@@ -1415,7 +1415,7 @@ class SwinUNetBlock(nn.Module):
         # 编码
         enc_out = self.encoder(x)
 
-        # 解码（上采样）
+        # 解码
         dec_out = self.decoder(enc_out)
 
         # 跳跃连接
