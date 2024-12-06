@@ -56,6 +56,7 @@ from .block import (
     RepVGGDW,
     ResNetLayer,
     SCDown,
+    C3SwinUNet,
 )
 from .conv import (
     CBAM,
@@ -156,4 +157,6 @@ __all__ = (
     "C2fCIB",
     "Attention",
     "PSA",
+    "GAMAttention",
+    "SwinUNetBlock",
 )
