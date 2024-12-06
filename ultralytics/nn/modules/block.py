@@ -1424,20 +1424,20 @@ class SwinUNetBlock(nn.Module):
         return out
 
 class C3SwinUNet(nn.Module):
-# C3 module with SwinUNetBlock
-def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, num_heads=4, num_layers=2, window_size=8):
-    super().__init__()
-    c_ = int(c2 * e)  # hidden channels
-    self.conv1 = Conv(c1, c_, 1, 1)
-    self.conv2 = Conv(c1, c_, 1, 1)
-    self.conv3 = Conv(2 * c_, c2, 1)  # output conv
-    self.m = SwinUNetBlock(c_, c_, num_heads, num_layers, window_size)
-    self.shortcut = shortcut and c1 == c2
+    # C3 module with SwinUNetBlock
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, num_heads=4, num_layers=2, window_size=8):
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.conv1 = Conv(c1, c_, 1, 1)
+        self.conv2 = Conv(c1, c_, 1, 1)
+        self.conv3 = Conv(2 * c_, c2, 1)  # output conv
+        self.m = SwinUNetBlock(c_, c_, num_heads, num_layers, window_size)
+        self.shortcut = shortcut and c1 == c2
 
-def forward(self, x):
-    y1 = self.m(self.conv1(x))
-    y2 = self.conv2(x)
-    y = self.conv3(torch.cat((y1, y2), dim=1))
-    if self.shortcut:
-        y = y + x
-    return y
+    def forward(self, x):
+        y1 = self.m(self.conv1(x))
+        y2 = self.conv2(x)
+        y = self.conv3(torch.cat((y1, y2), dim=1))
+        if self.shortcut:
+            y = y + x
+        return y
