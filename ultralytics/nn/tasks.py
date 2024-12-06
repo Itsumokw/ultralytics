@@ -61,7 +61,6 @@ from ultralytics.nn.modules import (
     Segment,
     WorldDetect,
     v10Detect,
-    GAMAttention,
     SwinUNetBlock,
 )
 from ultralytics.nn.modules.ODConvNext import ConvNextBlock, ODConv_3rd

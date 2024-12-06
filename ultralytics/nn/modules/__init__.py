@@ -157,6 +157,5 @@ __all__ = (
     "C2fCIB",
     "Attention",
     "PSA",
-    "GAMAttention",
     "SwinUNetBlock",
 )
