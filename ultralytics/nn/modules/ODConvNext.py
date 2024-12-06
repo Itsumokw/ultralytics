@@ -7,6 +7,18 @@ import torch.nn.functional as F
 
 #------------------------------------Convnext start -------------------------------------
 #ConvNextBlock
+
+def autopad(k, p=None):                        # kernel  padding 根据卷积核大小k自动计算卷积核padding数（0填充）
+    """
+    :param k: 卷积核的 kernel_size
+    :param p: 卷积的padding  一般是None
+    :return:  自动计算的需要pad值(0填充)
+    """
+    if p is None:
+        # k 是 int 整数则除以2, 若干的整数值则循环整除
+        p = k // 2 if isinstance(k, int) else [x // 2 for x in k]
+    return p
+
 class ConvNextBlock(nn.Module):
     
     def __init__(self, inputdim, dim, drop_path=0., layer_scale_init_value=1e-6, kersize = 7):   #demo: [64, 64, 1]  1 denotes the number of repeats
